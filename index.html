@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>flashcards</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>flashcards</h1>
+  </header>
+
+  <main>
+    <section class="decks-pane">
+      <h2>decks</h2>
+      <ul id="deckList" class="deck-list"></ul>
+      <form id="newDeckForm" class="inline-form">
+        <input id="newDeckName" type="text" placeholder="new deck name" maxlength="60" required>
+        <button type="submit">add deck</button>
+      </form>
+    </section>
+
+    <section id="deckView" class="deck-view hidden">
+      <div class="row">
+        <h2 id="currentDeckName"></h2>
+        <button id="deleteDeckBtn" class="danger" type="button">delete deck</button>
+      </div>
+
+      <form id="newCardForm" class="card-form">
+        <label>
+          <span>front</span>
+          <textarea id="cardFront" rows="2" required></textarea>
+        </label>
+        <label>
+          <span>back</span>
+          <textarea id="cardBack" rows="2" required></textarea>
+        </label>
+        <button type="submit">add card</button>
+      </form>
+
+      <h3>cards in deck</h3>
+      <table class="cards-table">
+        <thead>
+          <tr>
+            <th>front</th>
+            <th>back</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cardsTbody"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
