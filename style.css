@@ -84,7 +84,7 @@ h3 { font-size: 14px; color: var(--muted); margin-top: 24px; }
 
 .deck-list .count { font-size: 12px; color: var(--muted); }
 
-.deck-view {
+.deck-view, .study-view {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -124,6 +124,7 @@ button {
 
 button:hover { background: #353941; }
 button.danger { color: var(--bad); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .card-form {
   display: grid;
@@ -169,4 +170,39 @@ button.danger { color: var(--bad); }
   background: none;
   border: none;
   font-size: 12px;
+}
+
+/* study */
+.study-card { margin-top: 20px; }
+
+.face {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 60px 24px;
+  font-size: 22px;
+  text-align: center;
+  cursor: pointer;
+  white-space: pre-wrap;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.face.flipped {
+  background: #2a3340;
+  cursor: default;
+}
+
+.nav-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.study-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted);
 }

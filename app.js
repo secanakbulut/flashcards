@@ -5,6 +5,7 @@ const STORAGE_KEY = "flashcards.v1";
 
 let state = load();
 let currentDeckId = null;
+let studySession = null; // { deckId, queue, currentId, flipped }
 
 function load() {
   try {
@@ -30,6 +31,18 @@ function uid() {
 function getDeck(id) {
   return state.decks.find(d => d.id === id);
 }
+
+function shuffle(arr) {
+  // fisher-yates
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// --- rendering ---
 
 function renderDeckList() {
   const ul = document.getElementById("deckList");
@@ -82,31 +95,32 @@ function renderDeckView() {
     td.textContent = "no cards yet, add one above";
     tr.appendChild(td);
     tbody.appendChild(tr);
-    return;
+  } else {
+    for (const c of deck.cards) {
+      const tr = document.createElement("tr");
+      const front = document.createElement("td");
+      front.textContent = c.front;
+      const back = document.createElement("td");
+      back.textContent = c.back;
+      const actions = document.createElement("td");
+      const del = document.createElement("button");
+      del.className = "row-del";
+      del.textContent = "remove";
+      del.addEventListener("click", () => {
+        if (!confirm("remove this card?")) return;
+        deck.cards = deck.cards.filter(x => x.id !== c.id);
+        save();
+        renderAll();
+      });
+      actions.appendChild(del);
+      tr.appendChild(front);
+      tr.appendChild(back);
+      tr.appendChild(actions);
+      tbody.appendChild(tr);
+    }
   }
 
-  for (const c of deck.cards) {
-    const tr = document.createElement("tr");
-    const front = document.createElement("td");
-    front.textContent = c.front;
-    const back = document.createElement("td");
-    back.textContent = c.back;
-    const actions = document.createElement("td");
-    const del = document.createElement("button");
-    del.className = "row-del";
-    del.textContent = "remove";
-    del.addEventListener("click", () => {
-      if (!confirm("remove this card?")) return;
-      deck.cards = deck.cards.filter(x => x.id !== c.id);
-      save();
-      renderAll();
-    });
-    actions.appendChild(del);
-    tr.appendChild(front);
-    tr.appendChild(back);
-    tr.appendChild(actions);
-    tbody.appendChild(tr);
-  }
+  document.getElementById("studyBtn").disabled = deck.cards.length === 0;
 }
 
 function renderAll() {
@@ -114,8 +128,11 @@ function renderAll() {
   renderDeckView();
 }
 
+// --- actions ---
+
 function selectDeck(id) {
   currentDeckId = id;
+  exitStudy();
   renderAll();
 }
 
@@ -141,6 +158,72 @@ function deleteDeck(id) {
   save();
   renderAll();
 }
+
+// --- study mode (no scheduling yet, just flip through) ---
+
+function startStudy(deckId) {
+  const deck = getDeck(deckId);
+  if (!deck) return;
+
+  studySession = {
+    deckId: deckId,
+    queue: shuffle(deck.cards.map(c => c.id)),
+    currentId: null,
+    flipped: false
+  };
+
+  document.getElementById("deckView").classList.add("hidden");
+  document.getElementById("studyView").classList.remove("hidden");
+  document.getElementById("studyDeckName").textContent = deck.name + " — study";
+
+  nextStudyCard();
+}
+
+function nextStudyCard() {
+  const deck = getDeck(studySession.deckId);
+  const empty = document.getElementById("studyEmpty");
+  const card = document.getElementById("studyCard");
+  const face = document.getElementById("cardFace");
+  const nav = document.getElementById("navRow");
+
+  if (studySession.queue.length === 0) {
+    card.classList.add("hidden");
+    empty.classList.remove("hidden");
+    empty.querySelector("p").textContent = "you're done with this deck for now.";
+    return;
+  }
+
+  empty.classList.add("hidden");
+  card.classList.remove("hidden");
+
+  studySession.currentId = studySession.queue[0];
+  studySession.flipped = false;
+  const c = deck.cards.find(x => x.id === studySession.currentId);
+
+  face.textContent = c.front;
+  face.classList.remove("flipped");
+  nav.classList.add("hidden");
+}
+
+function flipCard() {
+  if (!studySession || studySession.flipped) return;
+  const deck = getDeck(studySession.deckId);
+  const c = deck.cards.find(x => x.id === studySession.currentId);
+  if (!c) return;
+  studySession.flipped = true;
+  const face = document.getElementById("cardFace");
+  face.textContent = c.back;
+  face.classList.add("flipped");
+  document.getElementById("navRow").classList.remove("hidden");
+}
+
+function exitStudy() {
+  studySession = null;
+  document.getElementById("studyView").classList.add("hidden");
+  if (currentDeckId) document.getElementById("deckView").classList.remove("hidden");
+}
+
+// --- wire up ---
 
 document.getElementById("newDeckForm").addEventListener("submit", e => {
   e.preventDefault();
@@ -169,6 +252,20 @@ document.getElementById("deleteDeckBtn").addEventListener("click", () => {
   if (!deck) return;
   if (!confirm("delete deck '" + deck.name + "' and all its cards?")) return;
   deleteDeck(currentDeckId);
+});
+
+document.getElementById("studyBtn").addEventListener("click", () => {
+  if (!currentDeckId) return;
+  startStudy(currentDeckId);
+});
+
+document.getElementById("exitStudy").addEventListener("click", exitStudy);
+document.getElementById("cardFace").addEventListener("click", flipCard);
+
+document.getElementById("nextBtn").addEventListener("click", () => {
+  if (!studySession) return;
+  studySession.queue.shift();
+  nextStudyCard();
 });
 
 renderAll();

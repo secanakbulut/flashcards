@@ -24,7 +24,10 @@
     <section id="deckView" class="deck-view hidden">
       <div class="row">
         <h2 id="currentDeckName"></h2>
-        <button id="deleteDeckBtn" class="danger" type="button">delete deck</button>
+        <div>
+          <button id="studyBtn" type="button">study</button>
+          <button id="deleteDeckBtn" class="danger" type="button">delete deck</button>
+        </div>
       </div>
 
       <form id="newCardForm" class="card-form">
@@ -50,6 +53,24 @@
         </thead>
         <tbody id="cardsTbody"></tbody>
       </table>
+    </section>
+
+    <section id="studyView" class="study-view hidden">
+      <div class="row">
+        <h2 id="studyDeckName"></h2>
+        <button id="exitStudy" type="button">back to deck</button>
+      </div>
+
+      <div id="studyEmpty" class="study-empty hidden">
+        <p>no cards in this deck yet.</p>
+      </div>
+
+      <div id="studyCard" class="study-card hidden">
+        <div id="cardFace" class="face">click the card to flip</div>
+        <div class="nav-row hidden" id="navRow">
+          <button id="nextBtn" type="button">next card</button>
+        </div>
+      </div>
     </section>
   </main>
 
