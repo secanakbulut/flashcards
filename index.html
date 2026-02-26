@@ -13,8 +13,13 @@
 
   <main>
     <section class="decks-pane">
-      <h2>decks</h2>
+      <div class="row">
+        <h2>decks</h2>
+        <span id="dueTotal" class="due-pill">0 due</span>
+      </div>
+
       <ul id="deckList" class="deck-list"></ul>
+
       <form id="newDeckForm" class="inline-form">
         <input id="newDeckName" type="text" placeholder="new deck name" maxlength="60" required>
         <button type="submit">add deck</button>
@@ -62,18 +67,22 @@
       </div>
 
       <div id="studyEmpty" class="study-empty hidden">
-        <p>no cards in this deck yet.</p>
+        <p>nothing due in this deck right now.</p>
       </div>
 
       <div id="studyCard" class="study-card hidden">
         <div id="cardFace" class="face">click the card to flip</div>
-        <div class="nav-row hidden" id="navRow">
-          <button id="nextBtn" type="button">next card</button>
+        <div class="grade-row hidden" id="gradeRow">
+          <button data-q="0" class="grade again">again</button>
+          <button data-q="3" class="grade hard">hard</button>
+          <button data-q="4" class="grade good">good</button>
+          <button data-q="5" class="grade easy">easy</button>
         </div>
       </div>
     </section>
   </main>
 
+  <script src="sm2.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,11 +1,12 @@
 // flashcards. localStorage backed.
-// shape: { decks: [{ id, name, cards: [{ id, front, back }] }] }
+// shape: { decks: [{ id, name, cards: [{ id, front, back, ease, interval, reps, nextReview }] }] }
 
 const STORAGE_KEY = "flashcards.v1";
+const { newCardScheduling, applyReview, DAY_MS } = window.SM2;
 
 let state = load();
 let currentDeckId = null;
-let studySession = null; // { deckId, queue, currentId, flipped }
+let studySession = null;
 
 function load() {
   try {
@@ -13,6 +14,15 @@ function load() {
     if (!raw) return { decks: [] };
     const parsed = JSON.parse(raw);
     if (!parsed.decks) parsed.decks = [];
+    // back-fill scheduling fields for cards from earlier versions
+    for (const d of parsed.decks) {
+      for (const c of d.cards) {
+        if (typeof c.ease !== "number") {
+          const s = newCardScheduling();
+          c.ease = s.ease; c.interval = s.interval; c.reps = s.reps; c.nextReview = s.nextReview;
+        }
+      }
+    }
     return parsed;
   } catch (e) {
     console.warn("storage parse failed", e);
@@ -32,14 +42,16 @@ function getDeck(id) {
   return state.decks.find(d => d.id === id);
 }
 
-function shuffle(arr) {
-  // fisher-yates
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+function dueCount(deck, now) {
+  if (!now) now = Date.now();
+  let n = 0;
+  for (const c of deck.cards) if (c.nextReview <= now) n++;
+  return n;
+}
+
+function totalDue(now) {
+  if (!now) now = Date.now();
+  return state.decks.reduce((s, d) => s + dueCount(d, now), 0);
 }
 
 // --- rendering ---
@@ -47,6 +59,7 @@ function shuffle(arr) {
 function renderDeckList() {
   const ul = document.getElementById("deckList");
   ul.innerHTML = "";
+  const now = Date.now();
 
   if (state.decks.length === 0) {
     const li = document.createElement("li");
@@ -54,7 +67,6 @@ function renderDeckList() {
     li.style.cursor = "default";
     li.style.color = "var(--muted)";
     ul.appendChild(li);
-    return;
   }
 
   for (const d of state.decks) {
@@ -63,15 +75,22 @@ function renderDeckList() {
 
     const name = document.createElement("span");
     name.textContent = d.name;
+
+    const due = dueCount(d, now);
     const count = document.createElement("span");
-    count.className = "count";
-    count.textContent = d.cards.length + " cards";
+    count.className = "count" + (due > 0 ? " has-due" : "");
+    count.textContent = due > 0 ? due + " due / " + d.cards.length : d.cards.length + " cards";
 
     li.appendChild(name);
     li.appendChild(count);
     li.addEventListener("click", () => selectDeck(d.id));
     ul.appendChild(li);
   }
+
+  const pill = document.getElementById("dueTotal");
+  const td = totalDue(now);
+  pill.textContent = td + " due";
+  pill.classList.toggle("has-due", td > 0);
 }
 
 function renderDeckView() {
@@ -120,7 +139,10 @@ function renderDeckView() {
     }
   }
 
-  document.getElementById("studyBtn").disabled = deck.cards.length === 0;
+  const studyBtn = document.getElementById("studyBtn");
+  const due = dueCount(deck);
+  studyBtn.textContent = due > 0 ? "study (" + due + " due)" : "study";
+  studyBtn.disabled = deck.cards.length === 0;
 }
 
 function renderAll() {
@@ -147,7 +169,16 @@ function addDeck(name) {
 function addCard(deckId, front, back) {
   const deck = getDeck(deckId);
   if (!deck) return;
-  deck.cards.push({ id: uid(), front: front, back: back });
+  const sched = newCardScheduling();
+  deck.cards.push({
+    id: uid(),
+    front: front,
+    back: back,
+    ease: sched.ease,
+    interval: sched.interval,
+    reps: sched.reps,
+    nextReview: sched.nextReview
+  });
   save();
   renderAll();
 }
@@ -159,15 +190,17 @@ function deleteDeck(id) {
   renderAll();
 }
 
-// --- study mode (no scheduling yet, just flip through) ---
+// --- study mode (now actually scheduled) ---
 
 function startStudy(deckId) {
   const deck = getDeck(deckId);
   if (!deck) return;
+  const now = Date.now();
+  const due = deck.cards.filter(c => c.nextReview <= now).map(c => c.id);
 
   studySession = {
     deckId: deckId,
-    queue: shuffle(deck.cards.map(c => c.id)),
+    queue: due,
     currentId: null,
     flipped: false
   };
@@ -184,12 +217,11 @@ function nextStudyCard() {
   const empty = document.getElementById("studyEmpty");
   const card = document.getElementById("studyCard");
   const face = document.getElementById("cardFace");
-  const nav = document.getElementById("navRow");
+  const grade = document.getElementById("gradeRow");
 
   if (studySession.queue.length === 0) {
     card.classList.add("hidden");
     empty.classList.remove("hidden");
-    empty.querySelector("p").textContent = "you're done with this deck for now.";
     return;
   }
 
@@ -202,7 +234,7 @@ function nextStudyCard() {
 
   face.textContent = c.front;
   face.classList.remove("flipped");
-  nav.classList.add("hidden");
+  grade.classList.add("hidden");
 }
 
 function flipCard() {
@@ -214,7 +246,27 @@ function flipCard() {
   const face = document.getElementById("cardFace");
   face.textContent = c.back;
   face.classList.add("flipped");
-  document.getElementById("navRow").classList.remove("hidden");
+  document.getElementById("gradeRow").classList.remove("hidden");
+}
+
+function gradeCard(q) {
+  if (!studySession || !studySession.flipped) return;
+  const deck = getDeck(studySession.deckId);
+  const c = deck.cards.find(x => x.id === studySession.currentId);
+  if (!c) return;
+
+  const updated = applyReview(c, q);
+  c.ease = updated.ease;
+  c.interval = updated.interval;
+  c.reps = updated.reps;
+  c.nextReview = updated.nextReview;
+  save();
+
+  studySession.queue.shift();
+  if (q < 3) studySession.queue.push(c.id); // see it again this session
+
+  nextStudyCard();
+  renderDeckList();
 }
 
 function exitStudy() {
@@ -262,10 +314,11 @@ document.getElementById("studyBtn").addEventListener("click", () => {
 document.getElementById("exitStudy").addEventListener("click", exitStudy);
 document.getElementById("cardFace").addEventListener("click", flipCard);
 
-document.getElementById("nextBtn").addEventListener("click", () => {
-  if (!studySession) return;
-  studySession.queue.shift();
-  nextStudyCard();
+document.querySelectorAll(".grade").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const q = parseInt(btn.dataset.q, 10);
+    gradeCard(q);
+  });
 });
 
 renderAll();
