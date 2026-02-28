@@ -1,4 +1,4 @@
-// flashcards. localStorage backed.
+// flashcards. all state in localStorage under one key.
 // shape: { decks: [{ id, name, cards: [{ id, front, back, ease, interval, reps, nextReview }] }] }
 
 const STORAGE_KEY = "flashcards.v1";
@@ -6,7 +6,7 @@ const { newCardScheduling, applyReview, DAY_MS } = window.SM2;
 
 let state = load();
 let currentDeckId = null;
-let studySession = null;
+let studySession = null; // { deckId, queue: [cardId, ...], currentId, flipped }
 
 function load() {
   try {
@@ -14,7 +14,6 @@ function load() {
     if (!raw) return { decks: [] };
     const parsed = JSON.parse(raw);
     if (!parsed.decks) parsed.decks = [];
-    // back-fill scheduling fields for cards from earlier versions
     for (const d of parsed.decks) {
       for (const c of d.cards) {
         if (typeof c.ease !== "number") {
@@ -25,7 +24,7 @@ function load() {
     }
     return parsed;
   } catch (e) {
-    console.warn("storage parse failed", e);
+    console.warn("storage parse failed, starting fresh", e);
     return { decks: [] };
   }
 }
@@ -54,7 +53,7 @@ function totalDue(now) {
   return state.decks.reduce((s, d) => s + dueCount(d, now), 0);
 }
 
-// --- rendering ---
+// ---- rendering ----
 
 function renderDeckList() {
   const ul = document.getElementById("deckList");
@@ -63,9 +62,9 @@ function renderDeckList() {
 
   if (state.decks.length === 0) {
     const li = document.createElement("li");
+    li.className = "muted";
     li.textContent = "no decks yet";
     li.style.cursor = "default";
-    li.style.color = "var(--muted)";
     ul.appendChild(li);
   }
 
@@ -93,12 +92,38 @@ function renderDeckList() {
   pill.classList.toggle("has-due", td > 0);
 }
 
+function fmtDate(ts) {
+  const now = Date.now();
+  const diff = ts - now;
+  if (diff <= 0) return "now";
+  const days = diff / DAY_MS;
+  if (days < 1) {
+    const hours = Math.round(diff / (60 * 60 * 1000));
+    return "in " + hours + "h";
+  }
+  if (days < 30) return "in " + Math.round(days) + "d";
+  const d = new Date(ts);
+  return d.toISOString().slice(0, 10);
+}
+
+function fmtInterval(card) {
+  if (card.reps === 0 && card.interval === 0) return "new";
+  if (card.interval < 1) return "<1d";
+  return card.interval + "d";
+}
+
 function renderDeckView() {
   const view = document.getElementById("deckView");
-  if (!currentDeckId) { view.classList.add("hidden"); return; }
-
+  if (!currentDeckId) {
+    view.classList.add("hidden");
+    return;
+  }
   const deck = getDeck(currentDeckId);
-  if (!deck) { currentDeckId = null; view.classList.add("hidden"); return; }
+  if (!deck) {
+    currentDeckId = null;
+    view.classList.add("hidden");
+    return;
+  }
 
   view.classList.remove("hidden");
   document.getElementById("currentDeckName").textContent = deck.name;
@@ -109,34 +134,52 @@ function renderDeckView() {
   if (deck.cards.length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 3;
-    td.style.color = "var(--muted)";
+    td.colSpan = 6;
+    td.className = "muted";
     td.textContent = "no cards yet, add one above";
     tr.appendChild(td);
     tbody.appendChild(tr);
-  } else {
-    for (const c of deck.cards) {
-      const tr = document.createElement("tr");
-      const front = document.createElement("td");
-      front.textContent = c.front;
-      const back = document.createElement("td");
-      back.textContent = c.back;
-      const actions = document.createElement("td");
-      const del = document.createElement("button");
-      del.className = "row-del";
-      del.textContent = "remove";
-      del.addEventListener("click", () => {
-        if (!confirm("remove this card?")) return;
-        deck.cards = deck.cards.filter(x => x.id !== c.id);
-        save();
-        renderAll();
-      });
-      actions.appendChild(del);
-      tr.appendChild(front);
-      tr.appendChild(back);
-      tr.appendChild(actions);
-      tbody.appendChild(tr);
-    }
+  }
+
+  for (const c of deck.cards) {
+    const tr = document.createElement("tr");
+
+    const front = document.createElement("td");
+    front.textContent = c.front;
+    const back = document.createElement("td");
+    back.textContent = c.back;
+
+    const ease = document.createElement("td");
+    ease.className = "nowrap";
+    ease.textContent = c.ease.toFixed(2);
+
+    const interval = document.createElement("td");
+    interval.className = "nowrap";
+    interval.textContent = fmtInterval(c);
+
+    const next = document.createElement("td");
+    next.className = "nowrap";
+    next.textContent = fmtDate(c.nextReview);
+
+    const actions = document.createElement("td");
+    const del = document.createElement("button");
+    del.className = "row-del";
+    del.textContent = "remove";
+    del.addEventListener("click", () => {
+      if (!confirm("remove this card?")) return;
+      deck.cards = deck.cards.filter(x => x.id !== c.id);
+      save();
+      renderAll();
+    });
+    actions.appendChild(del);
+
+    tr.appendChild(front);
+    tr.appendChild(back);
+    tr.appendChild(ease);
+    tr.appendChild(interval);
+    tr.appendChild(next);
+    tr.appendChild(actions);
+    tbody.appendChild(tr);
   }
 
   const studyBtn = document.getElementById("studyBtn");
@@ -150,7 +193,7 @@ function renderAll() {
   renderDeckView();
 }
 
-// --- actions ---
+// ---- actions ----
 
 function selectDeck(id) {
   currentDeckId = id;
@@ -190,13 +233,15 @@ function deleteDeck(id) {
   renderAll();
 }
 
-// --- study mode (now actually scheduled) ---
+// ---- study mode ----
 
 function startStudy(deckId) {
   const deck = getDeck(deckId);
   if (!deck) return;
   const now = Date.now();
-  const due = deck.cards.filter(c => c.nextReview <= now).map(c => c.id);
+  const due = deck.cards
+    .filter(c => c.nextReview <= now)
+    .map(c => c.id);
 
   studySession = {
     deckId: deckId,
@@ -218,10 +263,18 @@ function nextStudyCard() {
   const card = document.getElementById("studyCard");
   const face = document.getElementById("cardFace");
   const grade = document.getElementById("gradeRow");
+  const meta = document.getElementById("studyMeta");
+  const nextLine = document.getElementById("nextDueLine");
 
   if (studySession.queue.length === 0) {
     card.classList.add("hidden");
     empty.classList.remove("hidden");
+
+    let soonest = null;
+    for (const c of deck.cards) {
+      if (soonest === null || c.nextReview < soonest) soonest = c.nextReview;
+    }
+    nextLine.textContent = soonest ? "next card due " + fmtDate(soonest) + "." : "";
     return;
   }
 
@@ -235,6 +288,7 @@ function nextStudyCard() {
   face.textContent = c.front;
   face.classList.remove("flipped");
   grade.classList.add("hidden");
+  meta.textContent = "ease " + c.ease.toFixed(2) + " · interval " + fmtInterval(c);
 }
 
 function flipCard() {
@@ -263,7 +317,7 @@ function gradeCard(q) {
   save();
 
   studySession.queue.shift();
-  if (q < 3) studySession.queue.push(c.id); // see it again this session
+  if (q < 3) studySession.queue.push(c.id);
 
   nextStudyCard();
   renderDeckList();
@@ -275,7 +329,7 @@ function exitStudy() {
   if (currentDeckId) document.getElementById("deckView").classList.remove("hidden");
 }
 
-// --- wire up ---
+// ---- wire up ----
 
 document.getElementById("newDeckForm").addEventListener("submit", e => {
   e.preventDefault();
@@ -312,6 +366,7 @@ document.getElementById("studyBtn").addEventListener("click", () => {
 });
 
 document.getElementById("exitStudy").addEventListener("click", exitStudy);
+
 document.getElementById("cardFace").addEventListener("click", flipCard);
 
 document.querySelectorAll(".grade").forEach(btn => {
@@ -319,6 +374,28 @@ document.querySelectorAll(".grade").forEach(btn => {
     const q = parseInt(btn.dataset.q, 10);
     gradeCard(q);
   });
+});
+
+// keyboard shortcuts during study (1-4 = again/hard/good/easy, space = flip)
+document.addEventListener("keydown", e => {
+  if (!studySession) return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+
+  if (e.key === " " || e.key === "Enter") {
+    e.preventDefault();
+    flipCard();
+    return;
+  }
+  if (!studySession.flipped) return;
+  const map = { "1": 0, "2": 3, "3": 4, "4": 5 };
+  if (e.key in map) gradeCard(map[e.key]);
+});
+
+document.getElementById("aboutBtn").addEventListener("click", () => {
+  document.getElementById("aboutModal").classList.remove("hidden");
+});
+document.getElementById("closeAbout").addEventListener("click", () => {
+  document.getElementById("aboutModal").classList.add("hidden");
 });
 
 renderAll();

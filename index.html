@@ -9,6 +9,7 @@
 <body>
   <header>
     <h1>flashcards</h1>
+    <button id="aboutBtn" class="link-btn" type="button">how scheduling works</button>
   </header>
 
   <main>
@@ -53,6 +54,9 @@
           <tr>
             <th>front</th>
             <th>back</th>
+            <th>ease</th>
+            <th>interval</th>
+            <th>next review</th>
             <th></th>
           </tr>
         </thead>
@@ -68,6 +72,7 @@
 
       <div id="studyEmpty" class="study-empty hidden">
         <p>nothing due in this deck right now.</p>
+        <p class="muted" id="nextDueLine"></p>
       </div>
 
       <div id="studyCard" class="study-card hidden">
@@ -78,9 +83,31 @@
           <button data-q="4" class="grade good">good</button>
           <button data-q="5" class="grade easy">easy</button>
         </div>
+        <p class="muted" id="studyMeta"></p>
       </div>
     </section>
   </main>
+
+  <div id="aboutModal" class="modal hidden">
+    <div class="modal-inner">
+      <h3>sm-2, briefly</h3>
+      <p>
+        each card has an ease factor (starts at 2.5) and an interval in days.
+        when you grade a card, quality is mapped: again=0, hard=3, good=4, easy=5.
+      </p>
+      <p>
+        new ease becomes <code>old + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02))</code>,
+        clamped to a minimum of 1.3.
+      </p>
+      <p>
+        if quality is below 3, the card resets: interval back to 1 day, repetition count to 0.
+        otherwise the first review schedules 1 day out, the second 6 days out, and after that
+        the new interval is the previous one multiplied by the ease.
+      </p>
+      <p>next review is just <code>now + interval days</code>.</p>
+      <button id="closeAbout" type="button">close</button>
+    </div>
+  </div>
 
   <script src="sm2.js"></script>
   <script src="app.js"></script>
