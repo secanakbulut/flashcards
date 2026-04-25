@@ -1,5 +1,7 @@
 # flashcards
 
+![](docs/screenshot.png)
+
 a small spaced-repetition flashcards app, plain html/css/js. everything lives in localStorage so you can just open `index.html` and start using it.
 
 i wanted an excuse to actually implement sm-2 by hand instead of using a library, so this is mostly that.
